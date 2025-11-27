@@ -348,5 +348,65 @@ export class Enemy {
       new THREE.Vector3(this.radius * 2, this.height, this.radius * 2)
     );
   }
+  
+  /**
+   * Reset enemy for object pooling
+   * Reference: GAME_DEV_CONTEXT.md - Object Pooling Pattern
+   */
+  reset(position, type = 'grunt') {
+    this.type = type;
+    
+    // Reset stats
+    const stats = this.getStats(type);
+    this.health = stats.health;
+    this.maxHealth = stats.health;
+    this.speed = stats.speed;
+    this.damage = stats.damage;
+    this.attackRange = stats.attackRange;
+    this.attackCooldown = stats.attackCooldown;
+    this.scoreValue = stats.scoreValue;
+    
+    // Reset state
+    this.isDead = false;
+    this.lastAttackTime = 0;
+    this.isAttacking = false;
+    
+    // Reset position
+    this.position.copy(position);
+    this.velocity.set(0, 0, 0);
+    
+    // Reset animation
+    this.animTime = Math.random() * Math.PI * 2;
+    
+    // Reset mesh if it exists
+    if (this.mesh) {
+      this.mesh.position.copy(position);
+      this.mesh.rotation.x = 0;
+      this.mesh.position.y = 0;
+      this.mesh.visible = true;
+      
+      // Reset materials opacity
+      this.mesh.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.transparent = false;
+          child.material.opacity = 1;
+        }
+      });
+      
+      // Reset health bar
+      if (this.healthBar) {
+        this.healthBar.scale.x = 1;
+        this.healthBar.position.x = 0;
+      }
+      
+      // Add back to scene if removed
+      if (!this.mesh.parent) {
+        this.scene.add(this.mesh);
+      }
+    } else {
+      // First time - create mesh
+      this.init();
+    }
+  }
 }
 

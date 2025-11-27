@@ -5,6 +5,9 @@ import { Enemy } from './Enemy.js';
 import { World } from './World.js';
 import { InputManager } from '../utils/InputManager.js';
 import { HUD } from '../ui/HUD.js';
+import { GameState, GameStateMachine } from './GameStates.js';
+import { ObjectPool } from './ObjectPool.js';
+import { EventSystem, GameEvents } from './EventSystem.js';
 
 /**
  * Game - Main game controller
@@ -12,6 +15,10 @@ import { HUD } from '../ui/HUD.js';
 export class Game {
   constructor(container) {
     this.container = container;
+    
+    // Core Systems (Reference: GAME_DEV_CONTEXT.md)
+    this.stateMachine = new GameStateMachine();
+    this.events = new EventSystem();
     
     // Game state
     this.isRunning = false;
@@ -21,11 +28,6 @@ export class Game {
     this.score = 0;
     this.level = 1;
     
-    // Objective system
-    this.objectiveComplete = false;
-    this.shipDoorOpen = false;
-    this.secretItemCollected = false;
-    
     // Level configuration
     this.levelConfig = {
       1: { enemyCount: 8, enemyTypes: ['grunt'] },
@@ -33,8 +35,7 @@ export class Game {
       3: { enemyCount: 15, enemyTypes: ['grunt', 'runner', 'tank'] }
     };
     
-    // Enemies
-    this.enemies = [];
+    // Enemy management with Object Pooling
     this.totalEnemiesToSpawn = this.levelConfig[this.level].enemyCount;
     this.enemiesSpawned = 0;
     this.spawnInterval = 2; // seconds between spawns
@@ -106,6 +107,16 @@ export class Game {
     this.input.onShoot = () => this.handleShoot();
     this.input.onReload = () => this.weapon.reload();
     
+    // Initialize enemy object pool
+    this.enemyPool = new ObjectPool(
+      () => new Enemy(this.scene, new THREE.Vector3(0, 0, 0), 'grunt'),
+      (enemy, position, type) => enemy.reset(position, type),
+      15  // Pre-create 15 enemies
+    );
+    
+    // Setup event listeners
+    this.setupEventListeners();
+    
     // Handle window resize
     window.addEventListener('resize', () => this.onResize());
     
@@ -122,6 +133,62 @@ export class Game {
     // Restart button
     this.hud.onRestartClick(() => {
       this.restartGame();
+    });
+  }
+  
+  /**
+   * Setup event system listeners
+   * Reference: GAME_DEV_CONTEXT.md - Observer/Event System
+   */
+  setupEventListeners() {
+    // Listen for enemy killed events
+    this.events.on(GameEvents.ENEMY_KILLED, (enemy) => {
+      this.kills++;
+      this.score += enemy.scoreValue;
+      
+      // Update HUD
+      this.hud.updateKills(this.kills);
+      this.hud.updateScore(this.score);
+      
+      // Return enemy to pool after death animation
+      setTimeout(() => {
+        this.enemyPool.release(enemy);
+      }, 1000);
+    });
+    
+    // Listen for objective complete
+    this.events.on(GameEvents.OBJECTIVE_COMPLETE, () => {
+      this.stateMachine.setState(GameState.OBJECTIVE_COMPLETE);
+      this.world.openShipDoor();
+      this.hud.showObjectiveComplete();
+    });
+    
+    // Listen for ship door opened
+    this.events.on(GameEvents.SHIP_DOOR_OPENED, () => {
+      this.stateMachine.setState(GameState.SHIP_ACCESSIBLE);
+    });
+    
+    // Listen for item collected
+    this.events.on(GameEvents.ITEM_COLLECTED, () => {
+      this.stateMachine.setState(GameState.LEVEL_COMPLETE);
+      this.world.removeSecretItem();
+      
+      setTimeout(() => {
+        this.nextLevel();
+      }, 1000);
+    });
+    
+    // State machine listeners
+    this.stateMachine.on(GameState.OBJECTIVE_COMPLETE, () => {
+      console.log('All enemies defeated! Opening ship door...');
+    });
+    
+    this.stateMachine.on(GameState.GAME_OVER, () => {
+      this.gameOver();
+    });
+    
+    this.stateMachine.on(GameState.VICTORY, () => {
+      this.victory();
     });
   }
   
@@ -158,12 +225,16 @@ export class Game {
   }
   
   resetGame() {
+    // Reset state machine
+    this.stateMachine.reset();
+    
     // Reset state
     this.currentTime = 0;
     this.kills = 0;
     this.score = 0;
     this.level = 1;
-    this.enemiesKilledThisWave = 0;
+    this.enemiesSpawned = 0;
+    this.totalEnemiesToSpawn = this.levelConfig[this.level].enemyCount;
     
     // Reset player
     this.player.reset();
@@ -171,11 +242,21 @@ export class Game {
     // Reset weapon
     this.weapon.reset();
     
-    // Remove all enemies
-    this.enemies.forEach(enemy => {
-      this.scene.remove(enemy.mesh);
+    // Return all enemies to pool
+    const activeEnemies = this.enemyPool.getActive();
+    activeEnemies.forEach(enemy => {
+      if (enemy.mesh) {
+        this.scene.remove(enemy.mesh);
+      }
     });
-    this.enemies = [];
+    this.enemyPool.clear();
+    
+    // Reinitialize pool
+    this.enemyPool = new ObjectPool(
+      () => new Enemy(this.scene, new THREE.Vector3(0, 0, 0), 'grunt'),
+      (enemy, position, type) => enemy.reset(position, type),
+      15
+    );
     
     // Reset HUD
     this.hud.reset();
@@ -206,22 +287,29 @@ export class Game {
     const allowedTypes = this.levelConfig[this.level].enemyTypes;
     const type = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
     
-    const enemy = new Enemy(this.scene, spawnPoint, type);
-    this.enemies.push(enemy);
+    // Use object pool instead of creating new enemy
+    const enemy = this.enemyPool.acquire(spawnPoint, type);
     this.enemiesSpawned++;
     
-    console.log(`Spawned enemy ${this.enemiesSpawned}/${this.totalEnemiesToSpawn}`);
+    // Emit event
+    this.events.emit(GameEvents.ENEMY_SPAWNED, { enemy, type });
+    
+    console.log(`Spawned enemy ${this.enemiesSpawned}/${this.totalEnemiesToSpawn} - Pool: ${JSON.stringify(this.enemyPool.getStats())}`);
   }
   
   handleShoot() {
     const hitResult = this.weapon.shoot();
     if (!hitResult) return;
     
+    // Emit weapon fired event
+    this.events.emit(GameEvents.WEAPON_FIRED);
+    
     // Check if we hit any enemies
     const raycaster = hitResult.raycaster;
     
-    // Get all enemy meshes
-    const enemyMeshes = this.enemies
+    // Get all active enemies from pool
+    const activeEnemies = this.enemyPool.getActive();
+    const enemyMeshes = activeEnemies
       .filter(e => !e.isDead)
       .map(e => e.mesh);
     
@@ -231,7 +319,7 @@ export class Game {
       // Find which enemy was hit
       const hitMesh = intersects[0].object;
       
-      for (const enemy of this.enemies) {
+      for (const enemy of activeEnemies) {
         if (enemy.isDead) continue;
         
         // Check if this enemy's mesh or any of its children was hit
@@ -247,21 +335,12 @@ export class Game {
           // Apply damage
           const killed = enemy.takeDamage(this.weapon.damage);
           
+          // Emit hit event
+          this.events.emit(GameEvents.ENEMY_HIT, { enemy, damage: this.weapon.damage });
+          
           if (killed) {
-            this.kills++;
-            this.score += enemy.scoreValue;
-            this.enemiesKilledThisWave++;
-            
-            // Update HUD
-            this.hud.updateKills(this.kills);
-            this.hud.updateScore(this.score);
-            
-            // Spawn replacement enemy after delay
-            setTimeout(() => {
-              if (this.isRunning) {
-                this.spawnEnemy();
-              }
-            }, 2000);
+            // Emit killed event (event listener handles score/kills/pool)
+            this.events.emit(GameEvents.ENEMY_KILLED, enemy);
           }
           
           break;
@@ -283,11 +362,12 @@ export class Game {
     const trapDamage = this.world.checkTrapCollision(this.player.getPosition());
     if (trapDamage > 0) {
       this.player.takeDamage(trapDamage);
+      this.events.emit(GameEvents.PLAYER_HIT, { damage: trapDamage });
     }
     
     // Check if player died
     if (this.player.isDead) {
-      this.gameOver();
+      this.stateMachine.setState(GameState.GAME_OVER);
       return;
     }
     
@@ -297,30 +377,24 @@ export class Game {
     // Update weapon
     this.weapon.update(deltaTime);
     
-    // Update enemies
+    // Update enemies from pool
     const playerPos = this.player.getPosition();
+    const activeEnemies = this.enemyPool.getActive();
     
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
-      const enemy = this.enemies[i];
-      
-      if (enemy.isDead) {
-        // Remove dead enemies after animation
-        continue;
-      }
+    for (const enemy of activeEnemies) {
+      if (enemy.isDead) continue;
       
       enemy.update(deltaTime, playerPos);
       
       // Check if enemy can attack player
       if (enemy.canAttack()) {
         this.player.takeDamage(enemy.damage);
+        this.events.emit(GameEvents.PLAYER_HIT, { damage: enemy.damage, source: enemy });
       }
     }
     
-    // Clean up dead enemies
-    this.enemies = this.enemies.filter(e => !e.isDead || e.mesh.parent);
-    
-    // Spawn new enemies periodically until all spawned
-    if (this.enemiesSpawned < this.totalEnemiesToSpawn) {
+    // Spawn new enemies periodically until all spawned (only in PLAYING state)
+    if (this.stateMachine.isState(GameState.PLAYING) && this.enemiesSpawned < this.totalEnemiesToSpawn) {
       if (this.currentTime - this.lastSpawnTime > this.spawnInterval) {
         this.spawnEnemy();
         this.lastSpawnTime = this.currentTime;
@@ -328,13 +402,14 @@ export class Game {
     }
     
     // Check objective: all enemies killed?
-    const aliveEnemies = this.enemies.filter(e => !e.isDead).length;
-    if (!this.objectiveComplete && this.enemiesSpawned >= this.totalEnemiesToSpawn && aliveEnemies === 0) {
-      this.completeObjective();
+    const aliveEnemies = activeEnemies.filter(e => !e.isDead).length;
+    if (this.stateMachine.isState(GameState.PLAYING) && this.enemiesSpawned >= this.totalEnemiesToSpawn && aliveEnemies === 0) {
+      this.events.emit(GameEvents.OBJECTIVE_COMPLETE);
+      this.events.emit(GameEvents.SHIP_DOOR_OPENED);
     }
     
-    // Check if player is near ship door when it's open
-    if (this.shipDoorOpen && !this.secretItemCollected) {
+    // Check if player is near ship when accessible
+    if (this.stateMachine.isState(GameState.SHIP_ACCESSIBLE)) {
       this.checkShipEntry();
     }
     
@@ -342,50 +417,17 @@ export class Game {
     this.world.update(deltaTime);
   }
   
-  completeObjective() {
-    this.objectiveComplete = true;
-    this.shipDoorOpen = true;
-    
-    console.log('All enemies defeated! Ship door is opening...');
-    
-    // Open the ship door visually
-    this.world.openShipDoor();
-    
-    // Update HUD to show objective complete
-    this.hud.showObjectiveComplete();
-  }
-  
   checkShipEntry() {
     const playerPos = this.player.getPosition();
-    const shipEntrancePos = this.world.getShipEntrancePosition();
+    const itemPos = this.world.getSecretItemPosition();
+    const distanceToItem = playerPos.distanceTo(itemPos);
     
-    // Check if player is near ship entrance (within 3 units)
-    const distance = playerPos.distanceTo(shipEntrancePos);
-    
-    if (distance < 3) {
-      // Player entered the ship - look for item
-      const itemPos = this.world.getSecretItemPosition();
-      const distanceToItem = playerPos.distanceTo(itemPos);
-      
-      if (distanceToItem < 2) {
-        // Collected the item!
-        this.collectSecretItem();
-      }
+    // Check if player collected the item
+    if (distanceToItem < 2) {
+      // Emit item collected event
+      this.events.emit(GameEvents.ITEM_COLLECTED);
+      console.log('Secret item collected! Progressing to next level...');
     }
-  }
-  
-  collectSecretItem() {
-    this.secretItemCollected = true;
-    
-    console.log('Secret item collected! Progressing to next level...');
-    
-    // Remove the item from the world
-    this.world.removeSecretItem();
-    
-    // Progress to next level
-    setTimeout(() => {
-      this.nextLevel();
-    }, 1000);
   }
   
   nextLevel() {
@@ -393,7 +435,7 @@ export class Game {
     
     if (this.level > 3) {
       // Game complete!
-      this.victory();
+      this.stateMachine.setState(GameState.VICTORY);
     } else {
       // Reset for next level
       this.resetForNextLevel();
@@ -401,10 +443,10 @@ export class Game {
   }
   
   resetForNextLevel() {
-    // Reset state for new level
-    this.objectiveComplete = false;
-    this.shipDoorOpen = false;
-    this.secretItemCollected = false;
+    // Reset state machine
+    this.stateMachine.reset();
+    
+    // Reset spawn tracking
     this.enemiesSpawned = 0;
     this.totalEnemiesToSpawn = this.levelConfig[this.level].enemyCount;
     
@@ -417,6 +459,7 @@ export class Game {
     // Spawn new wave
     this.spawnWave();
     
+    this.hud.showMessage(`Level ${this.level} - Kill ${this.totalEnemiesToSpawn} enemies!`, 3000);
     console.log(`Level ${this.level} started! Kill ${this.totalEnemiesToSpawn} enemies.`);
   }
   
