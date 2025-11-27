@@ -144,9 +144,57 @@ export class HUD {
   
   reset() {
     this.updateHealth(100, 100);
-    this.updateTimer(30);
     this.updateKills(0);
     this.updateScore(0);
+  }
+  
+  showObjectiveComplete() {
+    // Change timer display to show objective complete
+    const timerLabel = document.querySelector('#top-hud .stat-box:first-child .stat-label');
+    if (timerLabel) {
+      timerLabel.textContent = 'OBJECTIVE';
+    }
+    if (this.elements.timerValue) {
+      this.elements.timerValue.textContent = '✓';
+      this.elements.timerValue.style.color = '#44ff44';
+      this.elements.timerValue.style.fontSize = '32px';
+    }
+    
+    // Show message
+    this.showMessage('Ship door opening! Enter to find the secret item!', 5000);
+  }
+  
+  showMessage(text, duration = 3000) {
+    // Create or update message element
+    let messageEl = document.getElementById('objective-message');
+    if (!messageEl) {
+      messageEl = document.createElement('div');
+      messageEl.id = 'objective-message';
+      messageEl.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: #ffcc00;
+        padding: 20px 40px;
+        border-radius: 10px;
+        border: 2px solid #ffcc00;
+        font-size: 24px;
+        font-weight: bold;
+        z-index: 150;
+        text-align: center;
+        pointer-events: none;
+      `;
+      document.body.appendChild(messageEl);
+    }
+    
+    messageEl.textContent = text;
+    messageEl.style.opacity = '1';
+    
+    setTimeout(() => {
+      messageEl.style.opacity = '0';
+    }, duration);
   }
 }
 

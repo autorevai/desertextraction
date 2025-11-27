@@ -185,7 +185,7 @@ export class World {
     planeGroup.add(engine);
     this.objects.push(engine);
     
-    // Cargo door (open)
+    // Cargo door (starts closed, opens when objective complete)
     const doorGeom = new THREE.BoxGeometry(3, 4, 0.2);
     const doorMat = new THREE.MeshStandardMaterial({
       color: 0x666666,
@@ -193,10 +193,55 @@ export class World {
       metalness: 0.3
     });
     const door = new THREE.Mesh(doorGeom, doorMat);
-    door.position.set(-3, 0.1, -2.5);
-    door.rotation.x = -Math.PI / 2 + 0.1;
+    door.position.set(-3, 2, -2.5);  // Starts upright (closed)
+    door.rotation.x = 0;  // Vertical
     door.castShadow = true;
     planeGroup.add(door);
+    this.shipDoor = door;  // Store reference
+    
+    // Ship interior floor
+    const interiorFloorGeom = new THREE.BoxGeometry(3, 0.2, 8);
+    const interiorFloorMat = new THREE.MeshStandardMaterial({
+      color: 0x444444,
+      roughness: 0.8
+    });
+    const interiorFloor = new THREE.Mesh(interiorFloorGeom, interiorFloorMat);
+    interiorFloor.position.set(-5.5, 0.1, -2.5);
+    planeGroup.add(interiorFloor);
+    
+    // Interior walls (left/right)
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x555555,
+      roughness: 0.7
+    });
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3, 8), wallMat);
+    leftWall.position.set(-5.5, 1.5, -4);
+    planeGroup.add(leftWall);
+    
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3, 8), wallMat);
+    rightWall.position.set(-5.5, 1.5, -1);
+    planeGroup.add(rightWall);
+    
+    // Secret item (glowing cube) - starts hidden
+    const itemGeom = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const itemMat = new THREE.MeshStandardMaterial({
+      color: 0xffcc00,
+      emissive: 0xffcc00,
+      emissiveIntensity: 0.5,
+      metalness: 0.8,
+      roughness: 0.2
+    });
+    const secretItem = new THREE.Mesh(itemGeom, itemMat);
+    secretItem.position.set(-7, 0.75, -2.5);
+    secretItem.visible = false;  // Hidden until door opens
+    planeGroup.add(secretItem);
+    this.secretItem = secretItem;
+    
+    // Add glowing light for the item
+    const itemLight = new THREE.PointLight(0xffcc00, 0, 5);
+    itemLight.position.copy(secretItem.position);
+    planeGroup.add(itemLight);
+    this.itemLight = itemLight;
     
     // Cargo boxes spilled out
     const boxMat = new THREE.MeshStandardMaterial({
@@ -552,6 +597,98 @@ export class World {
       new THREE.Vector3(-15, 0, -20),
       new THREE.Vector3(15, 0, -20),
     ];
+  }
+  
+  openShipDoor() {
+    if (!this.shipDoor) return;
+    
+    // Animate door falling open
+    const startRotation = this.shipDoor.rotation.x;
+    const endRotation = -Math.PI / 2 + 0.1;  // Fallen flat
+    const startY = this.shipDoor.position.y;
+    const endY = 0.1;
+    const duration = 1000;  // 1 second
+    const startTime = performance.now();
+    
+    const animate = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease out
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      this.shipDoor.rotation.x = startRotation + (endRotation - startRotation) * eased;
+      this.shipDoor.position.y = startY + (endY - startY) * eased;
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        // Show the secret item
+        if (this.secretItem) {
+          this.secretItem.visible = true;
+        }
+        if (this.itemLight) {
+          this.itemLight.intensity = 1;
+        }
+      }
+    };
+    
+    animate();
+  }
+  
+  closeShipDoor() {
+    if (!this.shipDoor) return;
+    
+    this.shipDoor.rotation.x = 0;
+    this.shipDoor.position.y = 2;
+    
+    if (this.secretItem) {
+      this.secretItem.visible = false;
+    }
+    if (this.itemLight) {
+      this.itemLight.intensity = 0;
+    }
+  }
+  
+  getShipEntrancePosition() {
+    // Position of the door entrance (in world space)
+    // Plane is at (0, 0, -25), door is at (-3, 0, -2.5) relative to plane
+    return new THREE.Vector3(-3, 0, -27.5);
+  }
+  
+  getSecretItemPosition() {
+    // Position of the secret item (in world space)
+    // Plane is at (0, 0, -25), item is at (-7, 0.75, -2.5) relative to plane
+    return new THREE.Vector3(-7, 0.75, -27.5);
+  }
+  
+  removeSecretItem() {
+    if (this.secretItem) {
+      // Animate item disappearing
+      const startScale = 1;
+      const duration = 500;
+      const startTime = performance.now();
+      
+      const animate = () => {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        const scale = startScale * (1 - progress);
+        this.secretItem.scale.setScalar(scale);
+        
+        if (this.itemLight) {
+          this.itemLight.intensity = 1 - progress;
+        }
+        
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          this.secretItem.visible = false;
+        }
+      };
+      
+      animate();
+    }
   }
 }
 

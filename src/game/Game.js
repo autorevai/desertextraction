@@ -16,23 +16,29 @@ export class Game {
     // Game state
     this.isRunning = false;
     this.isPaused = false;
-    this.gameTime = 30; // Survival time in seconds
     this.currentTime = 0;
     this.kills = 0;
     this.score = 0;
     this.level = 1;
     
-    // Betting
-    this.betAmount = 1;
-    this.winMultiplier = 3;
+    // Objective system
+    this.objectiveComplete = false;
+    this.shipDoorOpen = false;
+    this.secretItemCollected = false;
+    
+    // Level configuration
+    this.levelConfig = {
+      1: { enemyCount: 8, enemyTypes: ['grunt'] },
+      2: { enemyCount: 12, enemyTypes: ['grunt', 'runner'] },
+      3: { enemyCount: 15, enemyTypes: ['grunt', 'runner', 'tank'] }
+    };
     
     // Enemies
     this.enemies = [];
-    this.maxEnemies = 8;
-    this.spawnInterval = 3; // seconds
+    this.totalEnemiesToSpawn = this.levelConfig[this.level].enemyCount;
+    this.enemiesSpawned = 0;
+    this.spawnInterval = 2; // seconds between spawns
     this.lastSpawnTime = 0;
-    this.enemiesKilledThisWave = 0;
-    this.waveSize = 5;
     
     // Three.js
     this.scene = null;
@@ -176,36 +182,18 @@ export class Game {
   }
   
   spawnWave() {
-    const spawnPoints = this.world.getSpawnPoints();
-    const count = Math.min(this.waveSize + this.level - 1, this.maxEnemies - this.enemies.length);
+    // Spawn initial wave (2-3 enemies at start)
+    const initialWaveSize = Math.min(3, this.totalEnemiesToSpawn);
     
-    for (let i = 0; i < count; i++) {
-      // Random spawn point
-      const spawnIndex = Math.floor(Math.random() * spawnPoints.length);
-      const spawnPoint = spawnPoints[spawnIndex].clone();
-      
-      // Add some randomness to position
-      spawnPoint.x += (Math.random() - 0.5) * 5;
-      spawnPoint.z += (Math.random() - 0.5) * 5;
-      
-      // Determine enemy type based on level and randomness
-      let type = 'grunt';
-      const roll = Math.random();
-      
-      if (this.level >= 3 && roll > 0.9) {
-        type = 'tank';
-      } else if (this.level >= 2 && roll > 0.7) {
-        type = 'runner';
+    for (let i = 0; i < initialWaveSize; i++) {
+      if (this.enemiesSpawned < this.totalEnemiesToSpawn) {
+        this.spawnEnemy();
       }
-      
-      // Create enemy
-      const enemy = new Enemy(this.scene, spawnPoint, type);
-      this.enemies.push(enemy);
     }
   }
   
   spawnEnemy() {
-    if (this.enemies.length >= this.maxEnemies) return;
+    if (this.enemiesSpawned >= this.totalEnemiesToSpawn) return;
     
     const spawnPoints = this.world.getSpawnPoints();
     const spawnIndex = Math.floor(Math.random() * spawnPoints.length);
@@ -214,16 +202,15 @@ export class Game {
     spawnPoint.x += (Math.random() - 0.5) * 5;
     spawnPoint.z += (Math.random() - 0.5) * 5;
     
-    let type = 'grunt';
-    const roll = Math.random();
-    if (this.level >= 3 && roll > 0.9) {
-      type = 'tank';
-    } else if (this.level >= 2 && roll > 0.7) {
-      type = 'runner';
-    }
+    // Get enemy types for current level
+    const allowedTypes = this.levelConfig[this.level].enemyTypes;
+    const type = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
     
     const enemy = new Enemy(this.scene, spawnPoint, type);
     this.enemies.push(enemy);
+    this.enemiesSpawned++;
+    
+    console.log(`Spawned enemy ${this.enemiesSpawned}/${this.totalEnemiesToSpawn}`);
   }
   
   handleShoot() {
@@ -286,16 +273,8 @@ export class Game {
   update(deltaTime) {
     if (!this.isRunning) return;
     
-    // Update game time
+    // Update game time (for tracking)
     this.currentTime += deltaTime;
-    const timeRemaining = Math.max(0, this.gameTime - this.currentTime);
-    this.hud.updateTimer(timeRemaining);
-    
-    // Check win condition
-    if (timeRemaining <= 0) {
-      this.victory();
-      return;
-    }
     
     // Update player
     this.player.update(deltaTime);
@@ -340,24 +319,111 @@ export class Game {
     // Clean up dead enemies
     this.enemies = this.enemies.filter(e => !e.isDead || e.mesh.parent);
     
-    // Spawn new enemies periodically
-    if (this.currentTime - this.lastSpawnTime > this.spawnInterval) {
-      if (this.enemies.length < this.maxEnemies / 2) {
+    // Spawn new enemies periodically until all spawned
+    if (this.enemiesSpawned < this.totalEnemiesToSpawn) {
+      if (this.currentTime - this.lastSpawnTime > this.spawnInterval) {
         this.spawnEnemy();
+        this.lastSpawnTime = this.currentTime;
       }
-      this.lastSpawnTime = this.currentTime;
+    }
+    
+    // Check objective: all enemies killed?
+    const aliveEnemies = this.enemies.filter(e => !e.isDead).length;
+    if (!this.objectiveComplete && this.enemiesSpawned >= this.totalEnemiesToSpawn && aliveEnemies === 0) {
+      this.completeObjective();
+    }
+    
+    // Check if player is near ship door when it's open
+    if (this.shipDoorOpen && !this.secretItemCollected) {
+      this.checkShipEntry();
     }
     
     // Update world
     this.world.update(deltaTime);
   }
   
+  completeObjective() {
+    this.objectiveComplete = true;
+    this.shipDoorOpen = true;
+    
+    console.log('All enemies defeated! Ship door is opening...');
+    
+    // Open the ship door visually
+    this.world.openShipDoor();
+    
+    // Update HUD to show objective complete
+    this.hud.showObjectiveComplete();
+  }
+  
+  checkShipEntry() {
+    const playerPos = this.player.getPosition();
+    const shipEntrancePos = this.world.getShipEntrancePosition();
+    
+    // Check if player is near ship entrance (within 3 units)
+    const distance = playerPos.distanceTo(shipEntrancePos);
+    
+    if (distance < 3) {
+      // Player entered the ship - look for item
+      const itemPos = this.world.getSecretItemPosition();
+      const distanceToItem = playerPos.distanceTo(itemPos);
+      
+      if (distanceToItem < 2) {
+        // Collected the item!
+        this.collectSecretItem();
+      }
+    }
+  }
+  
+  collectSecretItem() {
+    this.secretItemCollected = true;
+    
+    console.log('Secret item collected! Progressing to next level...');
+    
+    // Remove the item from the world
+    this.world.removeSecretItem();
+    
+    // Progress to next level
+    setTimeout(() => {
+      this.nextLevel();
+    }, 1000);
+  }
+  
+  nextLevel() {
+    this.level++;
+    
+    if (this.level > 3) {
+      // Game complete!
+      this.victory();
+    } else {
+      // Reset for next level
+      this.resetForNextLevel();
+    }
+  }
+  
+  resetForNextLevel() {
+    // Reset state for new level
+    this.objectiveComplete = false;
+    this.shipDoorOpen = false;
+    this.secretItemCollected = false;
+    this.enemiesSpawned = 0;
+    this.totalEnemiesToSpawn = this.levelConfig[this.level].enemyCount;
+    
+    // Reset player position
+    this.player.reset();
+    
+    // Close ship door
+    this.world.closeShipDoor();
+    
+    // Spawn new wave
+    this.spawnWave();
+    
+    console.log(`Level ${this.level} started! Kill ${this.totalEnemiesToSpawn} enemies.`);
+  }
+  
   victory() {
     this.isRunning = false;
     
-    const winnings = this.betAmount * this.winMultiplier;
-    
-    this.hud.showGameOver(true, this.kills, this.score, winnings);
+    this.hud.showGameOver(true, this.kills, this.score, this.level);
     
     // Exit pointer lock
     document.exitPointerLock();
