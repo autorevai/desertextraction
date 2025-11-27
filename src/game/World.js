@@ -639,15 +639,20 @@ export class World {
   closeShipDoor() {
     if (!this.shipDoor) return;
     
+    // Reset door to closed position
     this.shipDoor.rotation.x = 0;
     this.shipDoor.position.y = 2;
     
+    // Hide and reset secret item
     if (this.secretItem) {
       this.secretItem.visible = false;
+      this.secretItem.scale.setScalar(1); // Reset scale in case it was animated
     }
     if (this.itemLight) {
       this.itemLight.intensity = 0;
     }
+    
+    console.log('Ship door closed, item hidden');
   }
   
   getShipEntrancePosition() {

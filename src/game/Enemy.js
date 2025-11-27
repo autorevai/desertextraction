@@ -307,35 +307,10 @@ export class Enemy {
   die() {
     this.isDead = true;
     
-    // Death animation - fall over and fade
-    const fallDuration = 500;
-    const startTime = performance.now();
-    
-    const animate = () => {
-      const elapsed = performance.now() - startTime;
-      const progress = Math.min(elapsed / fallDuration, 1);
-      
-      // Fall over
-      this.mesh.rotation.x = progress * Math.PI / 2;
-      this.mesh.position.y = Math.max(0, 1 - progress) * 0.5;
-      
-      // Fade out
-      this.mesh.traverse((child) => {
-        if (child.isMesh && child.material) {
-          child.material.transparent = true;
-          child.material.opacity = 1 - progress;
-        }
-      });
-      
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        // Remove from scene
-        this.scene.remove(this.mesh);
-      }
-    };
-    
-    animate();
+    // Immediately hide the enemy (no death animation for now - simpler/cleaner)
+    if (this.mesh) {
+      this.mesh.visible = false;
+    }
   }
   
   getPosition() {

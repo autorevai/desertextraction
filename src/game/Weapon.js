@@ -226,12 +226,11 @@ export class Weapon {
     const needed = this.maxAmmo - this.ammo;
     const available = Math.min(needed, this.reserveAmmo);
     
-    setTimeout(() => {
-      this.ammo += available;
-      this.reserveAmmo -= available;
-      this.isReloading = false;
-      this.updateAmmoDisplay();
-    }, this.reloadTime * 1000);
+    // INSTANT reload (no delay)
+    this.ammo += available;
+    this.reserveAmmo -= available;
+    this.isReloading = false;
+    this.updateAmmoDisplay();
   }
   
   updateAmmoDisplay() {

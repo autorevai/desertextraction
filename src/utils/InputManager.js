@@ -32,8 +32,8 @@ export class InputManager {
         e.preventDefault(); // Prevent page scroll
       }
       
-      // Enter = Reload
-      if (e.code === 'Enter' && this.onReload) {
+      // Shift = Reload (instant)
+      if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.onReload) {
         this.onReload();
       }
     });
@@ -104,14 +104,14 @@ export class InputManager {
     return { forward, right };
   }
   
-  // Check if sprinting (Shift key)
+  // Check if sprinting (Ctrl key now, since Shift is reload)
   isSprinting() {
-    return this.isKeyDown('ShiftLeft') || this.isKeyDown('ShiftRight');
+    return this.isKeyDown('ControlLeft') || this.isKeyDown('ControlRight');
   }
   
-  // Check if jumping (J key, since Space is now shoot)
+  // Jump disabled for now
   isJumping() {
-    return this.isKeyDown('KeyJ');
+    return false;
   }
   
   // Get mouse delta and reset it

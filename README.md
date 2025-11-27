@@ -4,14 +4,13 @@ A first-person survival shooter built with Three.js. Survive 30 seconds in the d
 
 ## 🎮 Gameplay
 
-- **Objective:** Survive for 30 seconds to win $3 (on a $1 bet)
+- **Objective:** Kill all enemies, enter the ship, collect the secret item
 - **Controls:**
   - `Arrow Keys` - Move
   - `Mouse` - Aim
   - `Space` - Shoot
-  - `Enter` - Reload
-  - `Shift` - Sprint
-  - `J` - Jump
+  - `Shift` - Reload (instant)
+  - `Ctrl` - Sprint
 
 ## 🚀 Quick Start
 

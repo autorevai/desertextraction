@@ -234,7 +234,8 @@ export class Game {
     this.score = 0;
     this.level = 1;
     this.enemiesSpawned = 0;
-    this.totalEnemiesToSpawn = this.levelConfig[this.level].enemyCount;
+    this.lastSpawnTime = 0;
+    this.totalEnemiesToSpawn = this.levelConfig[1].enemyCount; // Explicitly use level 1
     
     // Reset player
     this.player.reset();
@@ -242,24 +243,31 @@ export class Game {
     // Reset weapon
     this.weapon.reset();
     
-    // Return all enemies to pool
-    const activeEnemies = this.enemyPool.getActive();
+    // Return all enemies to pool and hide them
+    const activeEnemies = [...this.enemyPool.getActive()]; // Copy array
     activeEnemies.forEach(enemy => {
       if (enemy.mesh) {
+        enemy.mesh.visible = false;
         this.scene.remove(enemy.mesh);
       }
+      enemy.isDead = true;
     });
     this.enemyPool.clear();
     
-    // Reinitialize pool
+    // Reinitialize pool with fresh enemies
     this.enemyPool = new ObjectPool(
       () => new Enemy(this.scene, new THREE.Vector3(0, 0, 0), 'grunt'),
       (enemy, position, type) => enemy.reset(position, type),
       15
     );
     
+    // Reset world (close door, hide item)
+    this.world.closeShipDoor();
+    
     // Reset HUD
     this.hud.reset();
+    
+    console.log(`Game reset! Level ${this.level}, Need to kill ${this.totalEnemiesToSpawn} enemies`);
   }
   
   spawnWave() {
