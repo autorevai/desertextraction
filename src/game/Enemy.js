@@ -115,26 +115,26 @@ export class Enemy {
         break;
     }
     
-    // Body (cylinder)
-    const bodyGeom = new THREE.CylinderGeometry(0.35 * scale, 0.4 * scale, 1.4 * scale, 8);
+    // Body (cylinder) - LARGER for easier hitting
+    const bodyGeom = new THREE.CylinderGeometry(0.6 * scale, 0.7 * scale, 1.6 * scale, 8);
     const bodyMat = new THREE.MeshStandardMaterial({
       color: bodyColor,
       roughness: 0.8,
       metalness: 0.1
     });
     const body = new THREE.Mesh(bodyGeom, bodyMat);
-    body.position.y = 0.7 * scale;
+    body.position.y = 0.8 * scale;
     body.castShadow = true;
     group.add(body);
     
-    // Head
-    const headGeom = new THREE.SphereGeometry(0.25 * scale, 8, 8);
+    // Head - LARGER for easier hitting
+    const headGeom = new THREE.SphereGeometry(0.4 * scale, 8, 8);
     const headMat = new THREE.MeshStandardMaterial({
       color: 0xcc9966,
       roughness: 0.7
     });
     const head = new THREE.Mesh(headGeom, headMat);
-    head.position.y = 1.55 * scale;
+    head.position.y = 1.7 * scale;
     head.castShadow = true;
     group.add(head);
     this.head = head;
@@ -172,35 +172,10 @@ export class Enemy {
     group.add(rightArm);
     this.rightArm = rightArm;
     
-    // Health bar
-    const healthBg = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 0.1),
-      new THREE.MeshBasicMaterial({ color: 0x333333 })
-    );
-    healthBg.position.y = 2 * scale;
-    group.add(healthBg);
-    
-    const healthFg = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.98, 0.08),
-      new THREE.MeshBasicMaterial({ color: 0xff0000 })
-    );
-    healthFg.position.y = 2 * scale;
-    healthFg.position.z = 0.01;
-    group.add(healthFg);
-    this.healthBar = healthFg;
-    this.healthBg = healthBg;
-    
-    // Add invisible hitbox sphere for reliable shooting
-    const hitboxGeom = new THREE.SphereGeometry(1, 8, 8); // Big sphere around enemy
-    const hitboxMat = new THREE.MeshBasicMaterial({
-      transparent: true,
-      opacity: 0,
-      depthWrite: false
-    });
-    const hitbox = new THREE.Mesh(hitboxGeom, hitboxMat);
-    hitbox.position.y = 1; // Center of enemy
-    group.add(hitbox);
-    this.hitbox = hitbox; // Store reference
+    // Health bar (disabled for now - was rendering too large)
+    // TODO: Fix health bar rendering issue
+    this.healthBar = null;
+    this.healthBg = null;
     
     // Position the group
     group.position.copy(this.position);
@@ -266,12 +241,6 @@ export class Enemy {
     // Update mesh position
     this.mesh.position.x = this.position.x;
     this.mesh.position.z = this.position.z;
-    
-    // Make health bar face camera (billboard)
-    if (this.healthBg) {
-      this.healthBg.lookAt(playerPosition.x, this.healthBg.position.y + this.position.y, playerPosition.z);
-      this.healthBar.lookAt(playerPosition.x, this.healthBar.position.y + this.position.y, playerPosition.z);
-    }
   }
   
   canAttack() {
@@ -290,16 +259,9 @@ export class Enemy {
     
     this.health -= amount;
     
-    // Update health bar
-    if (this.healthBar) {
-      const healthPercent = Math.max(0, this.health / this.maxHealth);
-      this.healthBar.scale.x = healthPercent;
-      this.healthBar.position.x = (1 - healthPercent) * -0.5;
-    }
-    
-    // Flash red on hit
+    // Flash red on hit (visual feedback)
     this.mesh.traverse((child) => {
-      if (child.isMesh && child.material.color) {
+      if (child.isMesh && child.material && child.material.color) {
         const originalColor = child.material.color.getHex();
         child.material.color.setHex(0xff0000);
         setTimeout(() => {
@@ -319,12 +281,9 @@ export class Enemy {
   die() {
     this.isDead = true;
     
-    // Immediately hide the enemy and hitbox
+    // Immediately hide the enemy
     if (this.mesh) {
       this.mesh.visible = false;
-    }
-    if (this.hitbox) {
-      this.hitbox.visible = false;
     }
   }
   
@@ -375,11 +334,6 @@ export class Enemy {
       this.mesh.position.y = 0;
       this.mesh.visible = true;
       
-      // Make hitbox visible again
-      if (this.hitbox) {
-        this.hitbox.visible = true;
-      }
-      
       // Reset materials opacity
       this.mesh.traverse((child) => {
         if (child.isMesh && child.material) {
@@ -387,12 +341,6 @@ export class Enemy {
           child.material.opacity = 1;
         }
       });
-      
-      // Reset health bar
-      if (this.healthBar) {
-        this.healthBar.scale.x = 1;
-        this.healthBar.position.x = 0;
-      }
       
       // Add back to scene if removed
       if (!this.mesh.parent) {
