@@ -315,26 +315,34 @@ export class Game {
     // Check if we hit any enemies
     const raycaster = hitResult.raycaster;
     
-    // Get all active enemies from pool
-    const activeEnemies = this.enemyPool.getActive();
-    const enemyMeshes = activeEnemies
-      .filter(e => !e.isDead)
-      .map(e => e.mesh);
+    // Get all active ALIVE enemies from pool
+    const activeEnemies = this.enemyPool.getActive().filter(e => !e.isDead && e.mesh && e.mesh.visible);
     
+    if (activeEnemies.length === 0) return;
+    
+    const enemyMeshes = activeEnemies.map(e => e.mesh);
+    
+    // Raycast with recursive=true to hit hitbox children
     const intersects = raycaster.intersectObjects(enemyMeshes, true);
     
     if (intersects.length > 0) {
-      // Find which enemy was hit
-      const hitMesh = intersects[0].object;
+      // Find which enemy was hit by checking mesh hierarchy
+      const hitObject = intersects[0].object;
       
       for (const enemy of activeEnemies) {
         if (enemy.isDead) continue;
         
-        // Check if this enemy's mesh or any of its children was hit
+        // Check if hitObject is part of this enemy's mesh hierarchy
+        let currentParent = hitObject;
         let isThisEnemy = false;
-        enemy.mesh.traverse((child) => {
-          if (child === hitMesh) isThisEnemy = true;
-        });
+        
+        while (currentParent) {
+          if (currentParent === enemy.mesh) {
+            isThisEnemy = true;
+            break;
+          }
+          currentParent = currentParent.parent;
+        }
         
         if (isThisEnemy) {
           // Hit marker at impact point
@@ -385,12 +393,13 @@ export class Game {
     // Update weapon
     this.weapon.update(deltaTime);
     
-    // Update enemies from pool
+    // Update enemies from pool (only alive and visible ones)
     const playerPos = this.player.getPosition();
     const activeEnemies = this.enemyPool.getActive();
     
     for (const enemy of activeEnemies) {
-      if (enemy.isDead) continue;
+      // Skip dead or hidden enemies
+      if (enemy.isDead || !enemy.mesh || !enemy.mesh.visible) continue;
       
       enemy.update(deltaTime, playerPos);
       
@@ -410,8 +419,9 @@ export class Game {
     }
     
     // Check objective: all enemies killed?
-    const aliveEnemies = activeEnemies.filter(e => !e.isDead).length;
+    const aliveEnemies = activeEnemies.filter(e => !e.isDead && e.mesh && e.mesh.visible).length;
     if (this.stateMachine.isState(GameState.PLAYING) && this.enemiesSpawned >= this.totalEnemiesToSpawn && aliveEnemies === 0) {
+      console.log('All enemies defeated! Alive count: ' + aliveEnemies);
       this.events.emit(GameEvents.OBJECTIVE_COMPLETE);
       this.events.emit(GameEvents.SHIP_DOOR_OPENED);
     }

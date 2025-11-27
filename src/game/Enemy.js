@@ -190,6 +190,18 @@ export class Enemy {
     this.healthBar = healthFg;
     this.healthBg = healthBg;
     
+    // Add invisible hitbox sphere for reliable shooting
+    const hitboxGeom = new THREE.SphereGeometry(1, 8, 8); // Big sphere around enemy
+    const hitboxMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false
+    });
+    const hitbox = new THREE.Mesh(hitboxGeom, hitboxMat);
+    hitbox.position.y = 1; // Center of enemy
+    group.add(hitbox);
+    this.hitbox = hitbox; // Store reference
+    
     // Position the group
     group.position.copy(this.position);
     
@@ -307,9 +319,12 @@ export class Enemy {
   die() {
     this.isDead = true;
     
-    // Immediately hide the enemy (no death animation for now - simpler/cleaner)
+    // Immediately hide the enemy and hitbox
     if (this.mesh) {
       this.mesh.visible = false;
+    }
+    if (this.hitbox) {
+      this.hitbox.visible = false;
     }
   }
   
@@ -359,6 +374,11 @@ export class Enemy {
       this.mesh.rotation.x = 0;
       this.mesh.position.y = 0;
       this.mesh.visible = true;
+      
+      // Make hitbox visible again
+      if (this.hitbox) {
+        this.hitbox.visible = true;
+      }
       
       // Reset materials opacity
       this.mesh.traverse((child) => {
