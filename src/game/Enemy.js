@@ -151,31 +151,48 @@ export class Enemy {
     rightEye.position.set(0.1 * scale, 1.58 * scale, 0.2 * scale);
     group.add(rightEye);
     
-    // Arms
-    const armGeom = new THREE.CylinderGeometry(0.08 * scale, 0.1 * scale, 0.8 * scale, 6);
+    // Arms - BIGGER and better positioned
+    const armGeom = new THREE.CylinderGeometry(0.15 * scale, 0.18 * scale, 1.2 * scale, 6);
     const armMat = new THREE.MeshStandardMaterial({
       color: bodyColor,
       roughness: 0.8
     });
     
     const leftArm = new THREE.Mesh(armGeom, armMat);
-    leftArm.position.set(-0.45 * scale, 0.9 * scale, 0);
+    leftArm.position.set(-0.7 * scale, 1.0 * scale, 0);
     leftArm.rotation.z = 0.3;
     leftArm.castShadow = true;
     group.add(leftArm);
     this.leftArm = leftArm;
     
     const rightArm = new THREE.Mesh(armGeom, armMat);
-    rightArm.position.set(0.45 * scale, 0.9 * scale, 0);
+    rightArm.position.set(0.7 * scale, 1.0 * scale, 0);
     rightArm.rotation.z = -0.3;
     rightArm.castShadow = true;
     group.add(rightArm);
     this.rightArm = rightArm;
     
-    // Health bar (disabled for now - was rendering too large)
-    // TODO: Fix health bar rendering issue
-    this.healthBar = null;
-    this.healthBg = null;
+    // Simple health bar above head
+    const healthBarWidth = 1.2 * scale;
+    const healthBarHeight = 0.15;
+    
+    const healthBg = new THREE.Mesh(
+      new THREE.PlaneGeometry(healthBarWidth, healthBarHeight),
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
+    );
+    healthBg.position.y = 2.2 * scale;
+    group.add(healthBg);
+    this.healthBg = healthBg;
+    
+    const healthFg = new THREE.Mesh(
+      new THREE.PlaneGeometry(healthBarWidth * 0.95, healthBarHeight * 0.7),
+      new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    healthFg.position.y = 2.2 * scale;
+    healthFg.position.z = 0.01;
+    group.add(healthFg);
+    this.healthBar = healthFg;
+    this.healthBarWidth = healthBarWidth * 0.95;
     
     // Position the group
     group.position.copy(this.position);
@@ -241,6 +258,15 @@ export class Enemy {
     // Update mesh position
     this.mesh.position.x = this.position.x;
     this.mesh.position.z = this.position.z;
+    
+    // Make health bar face camera (billboard effect)
+    if (this.healthBg && this.healthBar) {
+      const worldPos = new THREE.Vector3();
+      this.mesh.getWorldPosition(worldPos);
+      
+      this.healthBg.lookAt(playerPosition.x, this.healthBg.position.y + worldPos.y, playerPosition.z);
+      this.healthBar.lookAt(playerPosition.x, this.healthBar.position.y + worldPos.y, playerPosition.z);
+    }
   }
   
   canAttack() {
@@ -258,6 +284,14 @@ export class Enemy {
     if (this.isDead) return false;
     
     this.health -= amount;
+    
+    // Update health bar
+    if (this.healthBar && this.healthBarWidth) {
+      const healthPercent = Math.max(0, this.health / this.maxHealth);
+      this.healthBar.scale.x = healthPercent;
+      // Offset position so it shrinks from right side
+      this.healthBar.position.x = (healthPercent - 1) * this.healthBarWidth / 2;
+    }
     
     // Flash red on hit (visual feedback)
     this.mesh.traverse((child) => {
@@ -303,6 +337,9 @@ export class Enemy {
    * Reference: GAME_DEV_CONTEXT.md - Object Pooling Pattern
    */
   reset(position, type = 'grunt') {
+    // CRITICAL: Reset isDead FIRST
+    this.isDead = false;
+    
     this.type = type;
     
     // Reset stats
@@ -316,7 +353,6 @@ export class Enemy {
     this.scoreValue = stats.scoreValue;
     
     // Reset state
-    this.isDead = false;
     this.lastAttackTime = 0;
     this.isAttacking = false;
     
@@ -329,10 +365,13 @@ export class Enemy {
     
     // Reset mesh if it exists
     if (this.mesh) {
+      // CRITICAL: Make visible FIRST
+      this.mesh.visible = true;
+      
       this.mesh.position.copy(position);
       this.mesh.rotation.x = 0;
+      this.mesh.rotation.y = 0;
       this.mesh.position.y = 0;
-      this.mesh.visible = true;
       
       // Reset materials opacity
       this.mesh.traverse((child) => {
@@ -342,10 +381,22 @@ export class Enemy {
         }
       });
       
+      // Reset health bar to full
+      if (this.healthBar) {
+        this.healthBar.scale.x = 1;
+        this.healthBar.position.x = 0;
+        this.healthBar.visible = true;
+      }
+      if (this.healthBg) {
+        this.healthBg.visible = true;
+      }
+      
       // Add back to scene if removed
       if (!this.mesh.parent) {
         this.scene.add(this.mesh);
       }
+      
+      console.log(`Enemy reset at (${position.x.toFixed(1)}, ${position.z.toFixed(1)}) - Type: ${type}`);
     } else {
       // First time - create mesh
       this.init();

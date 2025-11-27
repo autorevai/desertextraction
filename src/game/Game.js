@@ -150,10 +150,14 @@ export class Game {
       this.hud.updateKills(this.kills);
       this.hud.updateScore(this.score);
       
-      // Return enemy to pool after death animation
-      setTimeout(() => {
-        this.enemyPool.release(enemy);
-      }, 1000);
+      // Immediately mark as dead and hide
+      enemy.isDead = true;
+      if (enemy.mesh) {
+        enemy.mesh.visible = false;
+      }
+      
+      // Return enemy to pool immediately
+      this.enemyPool.release(enemy);
     });
     
     // Listen for objective complete
