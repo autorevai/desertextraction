@@ -26,7 +26,14 @@ export class InputManager {
     document.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
       
-      if (e.code === 'KeyR' && this.onReload) {
+      // Space = Shoot
+      if (e.code === 'Space' && this.onShoot) {
+        this.onShoot();
+        e.preventDefault(); // Prevent page scroll
+      }
+      
+      // Enter = Reload
+      if (e.code === 'Enter' && this.onReload) {
         this.onReload();
       }
     });
@@ -35,7 +42,7 @@ export class InputManager {
       this.keys[e.code] = false;
     });
     
-    // Mouse move (only when pointer is locked)
+    // Mouse move for aiming (only when pointer is locked)
     document.addEventListener('mousemove', (e) => {
       if (this.mouse.locked) {
         this.mouse.dx = e.movementX * this.sensitivity;
@@ -43,13 +50,10 @@ export class InputManager {
       }
     });
     
-    // Mouse buttons
+    // Mouse buttons (kept for future use, but not shooting)
     document.addEventListener('mousedown', (e) => {
       if (e.button === 0) {
         this.mouse.leftButton = true;
-        if (this.mouse.locked && this.onShoot) {
-          this.onShoot();
-        }
       }
       if (e.button === 2) {
         this.mouse.rightButton = true;
@@ -80,27 +84,34 @@ export class InputManager {
     return this.keys[code] === true;
   }
   
-  // Get movement vector based on WASD
+  // Get movement vector based on Arrow Keys (WASD still works as backup)
   getMovementVector() {
     let forward = 0;
     let right = 0;
     
-    if (this.isKeyDown('KeyW') || this.isKeyDown('ArrowUp')) forward += 1;
-    if (this.isKeyDown('KeyS') || this.isKeyDown('ArrowDown')) forward -= 1;
-    if (this.isKeyDown('KeyA') || this.isKeyDown('ArrowLeft')) right -= 1;
-    if (this.isKeyDown('KeyD') || this.isKeyDown('ArrowRight')) right += 1;
+    // Primary: Arrow keys
+    if (this.isKeyDown('ArrowUp')) forward += 1;
+    if (this.isKeyDown('ArrowDown')) forward -= 1;
+    if (this.isKeyDown('ArrowLeft')) right -= 1;
+    if (this.isKeyDown('ArrowRight')) right += 1;
+    
+    // Backup: WASD still works
+    if (this.isKeyDown('KeyW')) forward += 1;
+    if (this.isKeyDown('KeyS')) forward -= 1;
+    if (this.isKeyDown('KeyA')) right -= 1;
+    if (this.isKeyDown('KeyD')) right += 1;
     
     return { forward, right };
   }
   
-  // Check if sprinting
+  // Check if sprinting (Shift key)
   isSprinting() {
     return this.isKeyDown('ShiftLeft') || this.isKeyDown('ShiftRight');
   }
   
-  // Check if jumping
+  // Check if jumping (J key, since Space is now shoot)
   isJumping() {
-    return this.isKeyDown('Space');
+    return this.isKeyDown('KeyJ');
   }
   
   // Get mouse delta and reset it

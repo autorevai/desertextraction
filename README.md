@@ -6,12 +6,12 @@ A first-person survival shooter built with Three.js. Survive 30 seconds in the d
 
 - **Objective:** Survive for 30 seconds to win $3 (on a $1 bet)
 - **Controls:**
-  - `WASD` - Move
-  - `Mouse` - Look around
-  - `Left Click` - Shoot
-  - `R` - Reload
+  - `Arrow Keys` - Move
+  - `Mouse` - Aim
+  - `Space` - Shoot
+  - `Enter` - Reload
   - `Shift` - Sprint
-  - `Space` - Jump
+  - `J` - Jump
 
 ## 🚀 Quick Start
 
